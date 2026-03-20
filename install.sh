@@ -197,6 +197,14 @@ setup_network() {
     docker network create --driver overlay --attachable dokploy-network
 }
 
+setup_directories() {
+    printf "Setting up directories...\n"
+    mkdir -p /etc/dokploy
+    chmod 777 /etc/dokploy
+    mkdir -p /etc/dokploy/traefik/dynamic
+    printf "✅ Directories created.\n"
+}
+
 setup_secrets() {
     echo "Setting up secrets..."
     if ! docker secret ls --format '{{.Name}}' | grep -q "^dokploy_postgres_password$"; then
@@ -289,8 +297,7 @@ deploy_dokploy() {
 }
 
 deploy_traefik() {
-    echo "Deploying Traefik..."
-    mkdir -p /etc/dokploy/traefik/dynamic
+    printf "Deploying Traefik...\n"
     
     docker rm -f dokploy-traefik 2>/dev/null
     docker run -d \
@@ -309,7 +316,7 @@ deploy_traefik() {
 }
 
 install_dokploy() {
-    local TOTAL_STEPS=7
+    local TOTAL_STEPS=8
     local CURRENT_STEP=1
 
     # Detect version tag
@@ -329,6 +336,11 @@ install_dokploy() {
             exit 1
         fi
     done
+
+    # Step 2: Directories
+    print_step $CURRENT_STEP $TOTAL_STEPS "Directory Configuration"
+    setup_directories
+    CURRENT_STEP=$((CURRENT_STEP + 1))
     
     if command_exists docker; then
       print_success "Docker is already installed."
@@ -431,16 +443,16 @@ case "$1" in
         uninstall_dokploy
         ;;
     postgres)
-        setup_network && setup_secrets && deploy_postgres
+        setup_network && setup_directories && setup_secrets && deploy_postgres
         ;;
     redis)
-        setup_network && deploy_redis
+        setup_network && setup_directories && deploy_redis
         ;;
     dokploy)
-        setup_network && setup_secrets && deploy_dokploy
+        setup_network && setup_directories && setup_secrets && deploy_dokploy
         ;;
     traefik)
-        setup_network && deploy_traefik
+        setup_network && setup_directories && deploy_traefik
         ;;
     help|--help|-h)
         echo "Usage: $0 [update|uninstall|reset|postgres|redis|dokploy|traefik]"
