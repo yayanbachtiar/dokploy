@@ -25,7 +25,7 @@ print_step() {
     local total=$2
     local title=$3
     printf "\n${BOLD}${BLUE}[Step %s/%s]${NC} ${BOLD}%s${NC}\n" "$step" "$total" "$title"
-    printf "--------------------------------------------------------\n"
+    printf "%s\n" "--------------------------------------------------------"
 }
 
 print_success() {
