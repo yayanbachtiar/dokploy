@@ -8,6 +8,34 @@
 # Usage with bash: DOKPLOY_VERSION=canary bash install.sh
 # Usage with bash: DOKPLOY_VERSION=latest bash install.sh
 # Usage with bash: bash install.sh (detects latest stable version)
+command_exists() {
+  command -v "$@" > /dev/null 2>&1
+}
+
+# Colors and formatting
+GREEN="\033[0;32m"
+YELLOW="\033[1;33m"
+BLUE="\033[0;34m"
+RED="\033[0;31m"
+BOLD="\033[1m"
+NC="\033[0m" # No Color
+
+print_step() {
+    local step=$1
+    local total=$2
+    local title=$3
+    echo -e "\n${BOLD}${BLUE}[Step $step/$total]${NC} ${BOLD}$title${NC}"
+    echo "--------------------------------------------------------"
+}
+
+print_success() {
+    echo -e "${GREEN}✔ $1${NC}"
+}
+
+print_error() {
+    echo -e "${RED}✘ $1${NC}"
+}
+
 detect_version() {
     local version="${DOKPLOY_VERSION}"
     
@@ -81,203 +109,137 @@ generate_random_password() {
     echo "$password"
 }
 
-install_dokploy() {
-    # Detect version tag
-    VERSION_TAG=$(detect_version)
-    DOCKER_IMAGE="dokploy/dokploy:${VERSION_TAG}"
+wait_for_service() {
+    local service_name=$1
+    local timeout=${2:-60}
+    local start_time=$(date +%s)
+    local end_time=$((start_time + timeout))
     
-    echo "Installing Dokploy version: ${VERSION_TAG}"
-    if [ "$(id -u)" != "0" ]; then
-        echo "This script must be run as root" >&2
-        exit 1
-    fi
-
-    # check if is Mac OS
-    if [ "$(uname)" = "Darwin" ]; then
-        echo "This script must be run on Linux" >&2
-        exit 1
-    fi
-
-    # check if is running inside a container
-    if [ -f /.dockerenv ]; then
-        echo "This script must be run on Linux" >&2
-        exit 1
-    fi
-
-    # check if something is running on port 80
-    if ss -tulnp | grep ':80 ' >/dev/null; then
-        echo "Error: something is already running on port 80" >&2
-        exit 1
-    fi
-
-    # check if something is running on port 443
-    if ss -tulnp | grep ':443 ' >/dev/null; then
-        echo "Error: something is already running on port 443" >&2
-        exit 1
-    fi
-
-    # check if something is running on port 3000
-    if ss -tulnp | grep ':3000 ' >/dev/null; then
-        echo "Error: something is already running on port 3000" >&2
-        echo "Dokploy requires port 3000 to be available. Please stop any service using this port." >&2
-        exit 1
-    fi
-
-    command_exists() {
-      command -v "$@" > /dev/null 2>&1
-    }
-
-    if command_exists docker; then
-      echo "Docker already installed"
-    else
-      curl -sSL https://get.docker.com | sh -s -- --version 28.5.0
-    fi
-
-    # Check if running in Proxmox LXC container and set endpoint mode
-    endpoint_mode=""
-    if is_proxmox_lxc; then
-        echo "⚠️ WARNING: Detected Proxmox LXC container environment!"
-        echo "Adding --endpoint-mode dnsrr to Docker services for LXC compatibility."
-        echo "This may affect service discovery but is required for LXC containers."
-        echo ""
-        endpoint_mode="--endpoint-mode dnsrr"
-        echo "Waiting for 5 seconds before continuing..."
+    echo "Waiting for service $service_name to be stable (timeout: ${timeout}s)..."
+    
+    while [ $(date +%s) -lt $end_time ]; do
+        # Check if service exists
+        if ! docker service ls --format '{{.Name}}' | grep -q "^${service_name}$"; then
+            sleep 2
+            continue
+        fi
+        
+        # Check if service is running (at least one replica)
+        # Using docker service ps --filter to see if any replica is in 'Running' state
+        if [ "$(docker service ps "$service_name" --filter "desired-state=running" --format "{{.CurrentState}}" | grep -c "Running")" -ge 1 ]; then
+            echo "✅ Service $service_name is running and stable."
+            return 0
+        fi
+        
+        # Check for errors in service tasks
+        local error=$(docker service ps "$service_name" --no-trunc --format "{{.Error}}" | grep -v "^$" | head -n 1)
+        if [ -n "$error" ]; then
+            echo "❌ Error detected for service $service_name: $error"
+            # We don't exit immediately because sometimes it retries and succeeds (e.g. temporary pull error)
+        fi
+        
         sleep 5
+    done
+    
+    echo "❌ Timeout waiting for service $service_name to become stable."
+    return 1
+}
+
+init_swarm() {
+    if docker info --format '{{.Swarm.LocalNodeState}}' | grep -q "active"; then
+        echo "Docker Swarm already active."
+        return 0
     fi
 
-
-    docker swarm leave --force 2>/dev/null
-
-    get_ip() {
-        local ip=""
-        
-        # Try IPv4 first
-        # First attempt: ifconfig.io
-        ip=$(curl -4s --connect-timeout 5 https://ifconfig.io 2>/dev/null)
-        
-        # Second attempt: icanhazip.com
-        if [ -z "$ip" ]; then
-            ip=$(curl -4s --connect-timeout 5 https://icanhazip.com 2>/dev/null)
-        fi
-        
-        # Third attempt: ipecho.net
-        if [ -z "$ip" ]; then
-            ip=$(curl -4s --connect-timeout 5 https://ipecho.net/plain 2>/dev/null)
-        fi
-
-        # If no IPv4, try IPv6
-        if [ -z "$ip" ]; then
-            # Try IPv6 with ifconfig.io
-            ip=$(curl -6s --connect-timeout 5 https://ifconfig.io 2>/dev/null)
-            
-            # Try IPv6 with icanhazip.com
-            if [ -z "$ip" ]; then
-                ip=$(curl -6s --connect-timeout 5 https://icanhazip.com 2>/dev/null)
-            fi
-            
-            # Try IPv6 with ipecho.net
-            if [ -z "$ip" ]; then
-                ip=$(curl -6s --connect-timeout 5 https://ipecho.net/plain 2>/dev/null)
-            fi
-        fi
-
-        if [ -z "$ip" ]; then
-            echo "Error: Could not determine server IP address automatically (neither IPv4 nor IPv6)." >&2
-            echo "Please set the ADVERTISE_ADDR environment variable manually." >&2
-            echo "Example: export ADVERTISE_ADDR=<your-server-ip>" >&2
-            exit 1
-        fi
-
-        echo "$ip"
-    }
-
-    get_private_ip() {
-        ip addr show | grep -E "inet (192\.168\.|10\.|172\.1[6-9]\.|172\.2[0-9]\.|172\.3[0-1]\.)" | head -n1 | awk '{print $2}' | cut -d/ -f1
-    }
-
-    advertise_addr="${ADVERTISE_ADDR:-$(get_private_ip)}"
-
+    local advertise_addr="${ADVERTISE_ADDR:-$(get_private_ip)}"
     if [ -z "$advertise_addr" ]; then
-        echo "ERROR: We couldn't find a private IP address."
-        echo "Please set the ADVERTISE_ADDR environment variable manually."
-        echo "Example: export ADVERTISE_ADDR=192.168.1.100"
+        echo "ERROR: Could not find private IP. Set ADVERTISE_ADDR manually."
         exit 1
     fi
-    echo "Using advertise address: $advertise_addr"
-
-    # Allow custom Docker Swarm init arguments via DOCKER_SWARM_INIT_ARGS environment variable
-    # Example: export DOCKER_SWARM_INIT_ARGS="--default-addr-pool 172.20.0.0/16 --default-addr-pool-mask-length 24"
-    # This is useful to avoid CIDR overlapping with cloud provider VPCs (e.g., AWS)
-    swarm_init_args="${DOCKER_SWARM_INIT_ARGS:-}"
     
-    if [ -n "$swarm_init_args" ]; then
-        echo "Using custom swarm init arguments: $swarm_init_args"
-        docker swarm init --advertise-addr $advertise_addr $swarm_init_args
-    else
-        docker swarm init --advertise-addr $advertise_addr
-    fi
-    
-     if [ $? -ne 0 ]; then
+    echo "Initializing Docker Swarm on $advertise_addr..."
+    docker swarm init --advertise-addr "$advertise_addr" ${DOCKER_SWARM_INIT_ARGS:-}
+    if [ $? -ne 0 ]; then
         echo "Error: Failed to initialize Docker Swarm" >&2
-        exit 1
+        return 1
     fi
+}
 
-    echo "Swarm initialized"
-
+setup_network() {
+    echo "Setting up network..."
     docker network rm -f dokploy-network 2>/dev/null
     docker network create --driver overlay --attachable dokploy-network
+}
 
-    echo "Network created"
+setup_secrets() {
+    echo "Setting up secrets..."
+    if ! docker secret ls --format '{{.Name}}' | grep -q "^dokploy_postgres_password$"; then
+        local password=$(generate_random_password)
+        echo "$password" | docker secret create dokploy_postgres_password -
+        echo "✅ Created dokploy_postgres_password secret."
+    else
+        echo "dokploy_postgres_password secret already exists."
+    fi
+}
 
-    mkdir -p /etc/dokploy
-
-    chmod 777 /etc/dokploy
-
-    # Generate secure random password for Postgres
-    POSTGRES_PASSWORD=$(generate_random_password)
+deploy_postgres() {
+    echo "Deploying Postgres..."
+    # Check if Proxmox LXC
+    local endpoint_mode=""
+    if is_proxmox_lxc; then endpoint_mode="--endpoint-mode dnsrr"; fi
     
-    # Store password as Docker Secret (encrypted and secure)
-    echo "$POSTGRES_PASSWORD" | docker secret create dokploy_postgres_password - 2>/dev/null || true
+    docker service rm dokploy-postgres 2>/dev/null
+    docker service create \
+        --name dokploy-postgres \
+        --constraint 'node.role==manager' \
+        --network dokploy-network \
+        --env POSTGRES_USER=dokploy \
+        --env POSTGRES_DB=dokploy \
+        --secret source=dokploy_postgres_password,target=/run/secrets/postgres_password \
+        --env POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password \
+        --mount type=volume,source=dokploy-postgres,target=/var/lib/postgresql/data \
+        $endpoint_mode \
+        --detach=false \
+        postgres:16
     
-    echo "Generated secure database credentials (stored in Docker Secrets)"
+    wait_for_service dokploy-postgres
+}
 
+deploy_redis() {
+    echo "Deploying Redis..."
+    local endpoint_mode=""
+    if is_proxmox_lxc; then endpoint_mode="--endpoint-mode dnsrr"; fi
+    
+    docker service rm dokploy-redis 2>/dev/null
     docker service create \
-    --name dokploy-postgres \
-    --constraint 'node.role==manager' \
-    --network dokploy-network \
-    --env POSTGRES_USER=dokploy \
-    --env POSTGRES_DB=dokploy \
-    --secret source=dokploy_postgres_password,target=/run/secrets/postgres_password \
-    --env POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password \
-    --mount type=volume,source=dokploy-postgres,target=/var/lib/postgresql/data \
-    $endpoint_mode \
-    postgres:16
+        --name dokploy-redis \
+        --constraint 'node.role==manager' \
+        --network dokploy-network \
+        --mount type=volume,source=dokploy-redis,target=/data \
+        $endpoint_mode \
+        --detach=false \
+        redis:7
+    
+    wait_for_service dokploy-redis
+}
 
-    docker service create \
-    --name dokploy-redis \
-    --constraint 'node.role==manager' \
-    --network dokploy-network \
-    --mount type=volume,source=dokploy-redis,target=/data \
-    $endpoint_mode \
-    redis:7
-
-    # Installation
-    # Set RELEASE_TAG environment variable for canary/feature versions
-    release_tag_env=""
+deploy_dokploy() {
+    echo "Deploying Dokploy App..."
+    local VERSION_TAG=$(detect_version)
+    local DOCKER_IMAGE="dokploy/dokploy:${VERSION_TAG}"
+    local endpoint_mode=""
+    if is_proxmox_lxc; then endpoint_mode="--endpoint-mode dnsrr"; fi
+    
+    local release_tag_env=""
     case "$VERSION_TAG" in
-        v[0-9]*.[0-9]*.[0-9]*)
-            # Specific version (v0.26.6, v0.26.7, etc.) → latest
-            release_tag_env="-e RELEASE_TAG=latest"
-            ;;
-        latest)
-            # latest -> keep empty
-            ;;
-        *)
-            # canary, feature/*, etc. → use the tag as-is
-            release_tag_env="-e RELEASE_TAG=$VERSION_TAG"
-            ;;
+        v[0-9]*.[0-9]*.[0-9]*) release_tag_env="-e RELEASE_TAG=latest" ;;
+        latest) ;;
+        *) release_tag_env="-e RELEASE_TAG=$VERSION_TAG" ;;
     esac
+
+    local advertise_addr="${ADVERTISE_ADDR:-$(get_private_ip)}"
     
+    docker service rm dokploy 2>/dev/null
     docker service create \
       --name dokploy \
       --replicas 1 \
@@ -294,13 +256,17 @@ install_dokploy() {
       $release_tag_env \
       -e ADVERTISE_ADDR=$advertise_addr \
       -e POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password \
+      --detach=false \
       $DOCKER_IMAGE
+    
+    wait_for_service dokploy
+}
 
-    sleep 4
-
-    # Remove existing traefik container if it exists to avoid conflicts
+deploy_traefik() {
+    echo "Deploying Traefik..."
+    mkdir -p /etc/dokploy/traefik/dynamic
+    
     docker rm -f dokploy-traefik 2>/dev/null
-
     docker run -d \
         --name dokploy-traefik \
         --restart always \
@@ -311,66 +277,106 @@ install_dokploy() {
         -p 443:443/tcp \
         -p 443:443/udp \
         traefik:v3.6.7
+
+    docker network connect dokploy-network dokploy-traefik 2>/dev/null || true
+    echo "✅ Traefik container started."
+}
+
+install_dokploy() {
+    local TOTAL_STEPS=7
+    local CURRENT_STEP=1
+
+    # Detect version tag
+    VERSION_TAG=$(detect_version)
+    echo -e "${BOLD}${BLUE}Starting Dokploy Installation (Version: ${VERSION_TAG})${NC}"
+
+    # Step 1: Pre-checks
+    print_step $CURRENT_STEP $TOTAL_STEPS "System Environment Checks"
     
-    docker network connect dokploy-network dokploy-traefik
+    if [ "$(id -u)" != "0" ]; then print_error "This script must be run as root"; exit 1; fi
+    if [ "$(uname)" = "Darwin" ] || [ -f /.dockerenv ]; then print_error "This script must be run on Linux"; exit 1; fi
 
+    local ports="80 443 3000"
+    for port in $ports; do
+        if ss -tulnp | grep ":$port " >/dev/null; then
+            print_error "Port $port is already in use. Please free it before continuing."
+            exit 1
+        fi
+    done
+    
+    if command_exists docker; then
+      print_success "Docker is already installed."
+    else
+      echo "Installing Docker..."
+      curl -sSL https://get.docker.com | sh -s -- --version 28.5.0 || { print_error "Failed to install Docker"; exit 1; }
+    fi
+    CURRENT_STEP=$((CURRENT_STEP + 1))
 
-    # Optional: Use docker service create instead of docker run
-    #   docker service create \
-    #     --name dokploy-traefik \
-    #     --constraint 'node.role==manager' \
-    #     --network dokploy-network \
-    #     --mount type=bind,source=/etc/dokploy/traefik/traefik.yml,target=/etc/traefik/traefik.yml \
-    #     --mount type=bind,source=/etc/dokploy/traefik/dynamic,target=/etc/dokploy/traefik/dynamic \
-    #     --mount type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock \
-    #     --publish mode=host,published=443,target=443 \
-    #     --publish mode=host,published=80,target=80 \
-    #     --publish mode=host,published=443,target=443,protocol=udp \
-    #     traefik:v3.6.7
+    # Step 2: Swarm Initialization
+    print_step $CURRENT_STEP $TOTAL_STEPS "Docker Swarm Initialization"
+    docker swarm leave --force 2>/dev/null
+    init_swarm || { print_error "Failed to initialize Swarm"; exit 1; }
+    print_success "Swarm initialized successfully."
+    CURRENT_STEP=$((CURRENT_STEP + 1))
 
-    GREEN="\033[0;32m"
-    YELLOW="\033[1;33m"
-    BLUE="\033[0;34m"
-    NC="\033[0m" # No Color
+    # Step 3: Network Setup
+    print_step $CURRENT_STEP $TOTAL_STEPS "Network Configuration"
+    setup_network || { print_error "Failed to create network"; exit 1; }
+    print_success "Network 'dokploy-network' created."
+    CURRENT_STEP=$((CURRENT_STEP + 1))
 
+    # Step 4: Security (Secrets)
+    print_step $CURRENT_STEP $TOTAL_STEPS "Secrets Management"
+    setup_secrets || { print_error "Failed to setup secrets"; exit 1; }
+    CURRENT_STEP=$((CURRENT_STEP + 1))
+
+    # Step 5: Database (Postgres)
+    print_step $CURRENT_STEP $TOTAL_STEPS "Deploying Postgres Database"
+    deploy_postgres || { print_error "Failed to deploy Postgres"; exit 1; }
+    CURRENT_STEP=$((CURRENT_STEP + 1))
+
+    # Step 6: Cache (Redis)
+    print_step $CURRENT_STEP $TOTAL_STEPS "Deploying Redis Cache"
+    deploy_redis || { print_error "Failed to deploy Redis"; exit 1; }
+    CURRENT_STEP=$((CURRENT_STEP + 1))
+
+    # Step 7: Application & Reverse Proxy
+    print_step $TOTAL_STEPS $TOTAL_STEPS "Deploying Dokploy App & Traefik"
+    deploy_dokploy || { print_error "Failed to deploy Dokploy"; exit 1; }
+    deploy_traefik || { print_error "Failed to deploy Traefik"; exit 1; }
+
+    local public_ip="${ADVERTISE_ADDR:-$(get_ip)}"
+    
     format_ip_for_url() {
         local ip="$1"
-        if echo "$ip" | grep -q ':'; then
-            # IPv6
-            echo "[${ip}]"
-        else
-            # IPv4
-            echo "${ip}"
-        fi
+        case "$ip" in *:* ) echo "[${ip}]" ;; * ) echo "${ip}" ;; esac
     }
-
-    public_ip="${ADVERTISE_ADDR:-$(get_ip)}"
-    formatted_addr=$(format_ip_for_url "$public_ip")
+    
+    local formatted_addr=$(format_ip_for_url "$public_ip")
     echo ""
-    printf "${GREEN}Congratulations, Dokploy is installed!${NC}\n"
-    printf "${BLUE}Wait 15 seconds for the server to start${NC}\n"
-    printf "${YELLOW}Please go to http://${formatted_addr}:3000${NC}\n"
-    printf "${BLUE}docker exec -it \$(docker ps -q -f name=dokploy) pnpm run migration:run${NC}\n\n"
+    echo -e "${GREEN}${BOLD}Congratulations, Dokploy is installed!${NC}"
+    echo -e "${BLUE}Please wait a few seconds for all services to fully stabilize.${NC}"
+    echo -e "${YELLOW}Access your dashboard at: ${BOLD}http://${formatted_addr}:3000${NC}"
 }
 
 uninstall_dokploy() {
     echo "Uninstalling Dokploy..."
-    
+
     # Remove services
     docker service rm dokploy dokploy-postgres dokploy-redis 2>/dev/null
-    
+
     # Remove network
     docker network rm dokploy-network 2>/dev/null
-    
+
     # Remove secrets
     docker secret rm dokploy_postgres_password 2>/dev/null
-    
+
     # Remove traefik container
     docker rm -f dokploy-traefik 2>/dev/null
-    
+
     # Optional: leave swarm if this was the only thing using it
     # docker swarm leave --force 2>/dev/null
-    
+
     echo "Dokploy has been uninstalled."
 }
 
@@ -378,9 +384,9 @@ update_dokploy() {
     # Detect version tag
     VERSION_TAG=$(detect_version)
     DOCKER_IMAGE="dokploy/dokploy:${VERSION_TAG}"
-    
+
     echo "Updating Dokploy to version: ${VERSION_TAG}"
-    
+
     # Pull the image
     docker pull $DOCKER_IMAGE
 
@@ -398,13 +404,33 @@ case "$1" in
     uninstall|reset|remove)
         uninstall_dokploy
         ;;
+    postgres)
+        setup_network && setup_secrets && deploy_postgres
+        ;;
+    redis)
+        setup_network && deploy_redis
+        ;;
+    dokploy)
+        setup_network && setup_secrets && deploy_dokploy
+        ;;
+    traefik)
+        setup_network && deploy_traefik
+        ;;
     help|--help|-h)
-        echo "Usage: $0 [update|uninstall|reset]"
+        echo "Usage: $0 [update|uninstall|reset|postgres|redis|dokploy|traefik]"
         echo "  (no args) : Install Dokploy"
         echo "  update    : Update Dokploy"
         echo "  uninstall : Remove Dokploy services and containers"
+        echo "  postgres  : Deploy only Postgres service"
+        echo "  redis     : Deploy only Redis service"
+        echo "  dokploy   : Deploy only Dokploy application"
+        echo "  traefik   : Deploy only Traefik container"
         ;;
     *)
+        # Pre-checks only for full installation
+        if [ "$(id -u)" != "0" ]; then echo "This script must be run as root" >&2; exit 1; fi
+        if [ "$(uname)" = "Darwin" ] || [ -f /.dockerenv ]; then echo "This script must be run on Linux" >&2; exit 1; fi
+
         install_dokploy
         ;;
 esac
