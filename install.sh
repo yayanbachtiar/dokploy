@@ -20,8 +20,8 @@ detect_version() {
             https://github.com/yayanbachtiar/dokploy/releases/latest 2>/dev/null | \
             sed 's#.*/tag/##')
         
-        # Fallback to latest tag if detection fails
-        if [ -z "$version" ]; then
+        # Fallback to latest tag if detection fails or invalid URL returned
+        if [ -z "$version" ] || [[ "$version" == http* ]]; then
             echo "Warning: Could not detect latest version from GitHub, using fallback version latest" >&2
             version="latest"
         else
@@ -288,6 +288,9 @@ install_dokploy() {
       $DOCKER_IMAGE
 
     sleep 4
+
+    # Remove existing traefik container if it exists to avoid conflicts
+    docker rm -f dokploy-traefik 2>/dev/null
 
     docker run -d \
         --name dokploy-traefik \
