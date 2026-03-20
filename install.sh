@@ -21,12 +21,15 @@ detect_version() {
             sed 's#.*/tag/##')
         
         # Fallback to latest tag if detection fails or invalid URL returned
-        if [ -z "$version" ] || [[ "$version" == http* ]]; then
-            echo "Warning: Could not detect latest version from GitHub, using fallback version latest" >&2
-            version="latest"
-        else
-            echo "Latest stable version detected: $version" >&2
-        fi
+        case "$version" in
+            http*|"")
+                echo "Warning: Could not detect latest version from GitHub, using fallback version latest" >&2
+                version="latest"
+                ;;
+            *)
+                echo "Latest stable version detected: $version" >&2
+                ;;
+        esac
     fi
     
     echo "$version"
@@ -261,13 +264,19 @@ install_dokploy() {
     # Installation
     # Set RELEASE_TAG environment variable for canary/feature versions
     release_tag_env=""
-    if [[ "$VERSION_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
-        # Specific version (v0.26.6, v0.26.7, etc.) → latest
-        release_tag_env="-e RELEASE_TAG=latest"
-    elif [ "$VERSION_TAG" != "latest" ]; then
-        # canary, feature/*, etc. → use the tag as-is
-        release_tag_env="-e RELEASE_TAG=$VERSION_TAG"
-    fi
+    case "$VERSION_TAG" in
+        v[0-9]*.[0-9]*.[0-9]*)
+            # Specific version (v0.26.6, v0.26.7, etc.) → latest
+            release_tag_env="-e RELEASE_TAG=latest"
+            ;;
+        latest)
+            # latest -> keep empty
+            ;;
+        *)
+            # canary, feature/*, etc. → use the tag as-is
+            release_tag_env="-e RELEASE_TAG=$VERSION_TAG"
+            ;;
+    esac
     
     docker service create \
       --name dokploy \
@@ -399,4 +408,3 @@ case "$1" in
         install_dokploy
         ;;
 esac
-```
