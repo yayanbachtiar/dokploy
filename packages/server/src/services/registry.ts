@@ -7,7 +7,6 @@ import {
 import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import type { z } from "zod";
-import { IS_CLOUD } from "../constants";
 
 export type Registry = typeof registry.$inferSelect;
 
@@ -48,12 +47,6 @@ export const createRegistry = async (
 			});
 		}
 
-		if (IS_CLOUD && !input.serverId && input.serverId !== "none") {
-			throw new TRPCError({
-				code: "NOT_FOUND",
-				message: "Select a server to add the registry",
-			});
-		}
 		const loginCommand = safeDockerLoginCommand(
 			input.registryUrl,
 			input.username,
@@ -84,9 +77,7 @@ export const removeRegistry = async (registryId: string) => {
 			});
 		}
 
-		if (!IS_CLOUD) {
-			await execAsync(`docker logout ${response.registryUrl}`);
-		}
+		await execAsync(`docker logout ${response.registryUrl}`);
 
 		return response;
 	} catch (error) {
@@ -117,17 +108,6 @@ export const updateRegistry = async (
 			response?.username,
 			response?.password,
 		);
-
-		if (
-			IS_CLOUD &&
-			!registryData?.serverId &&
-			registryData?.serverId !== "none"
-		) {
-			throw new TRPCError({
-				code: "NOT_FOUND",
-				message: "Select a server to add the registry",
-			});
-		}
 
 		if (registryData?.serverId && registryData?.serverId !== "none") {
 			await execAsyncRemote(registryData.serverId, loginCommand);

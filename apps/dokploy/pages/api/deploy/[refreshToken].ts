@@ -1,7 +1,6 @@
 import {
 	type Bitbucket,
 	getBitbucketHeaders,
-	IS_CLOUD,
 	shouldDeploy,
 } from "@dokploy/server";
 import { db } from "@dokploy/server/db";
@@ -246,7 +245,7 @@ export default async function handler(
 				server: !!application.serverId,
 			};
 
-			if (IS_CLOUD && application.serverId) {
+			if (application.serverId) {
 				jobData.serverId = application.serverId;
 				deploy(jobData).catch((error) => {
 					console.error("Background deployment failed:", error);

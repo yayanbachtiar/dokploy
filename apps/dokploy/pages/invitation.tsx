@@ -1,4 +1,4 @@
-import { getUserByToken, IS_CLOUD } from "@dokploy/server";
+import { getUserByToken } from "@dokploy/server";
 import { standardSchemaResolver as zodResolver } from "@hookform/resolvers/standard-schema";
 import type { GetServerSidePropsContext } from "next";
 import Link from "next/link";
@@ -72,7 +72,6 @@ type Register = z.infer<typeof registerSchema>;
 interface Props {
 	token: string;
 	invitation: Awaited<ReturnType<typeof getUserByToken>>;
-	isCloud: boolean;
 	userAlreadyExists: boolean;
 }
 
@@ -354,7 +353,6 @@ export async function getServerSideProps(ctx: GetServerSidePropsContext) {
 		if (invitation.userAlreadyExists) {
 			return {
 				props: {
-					isCloud: IS_CLOUD,
 					token: token,
 					invitation: invitation,
 					userAlreadyExists: true,
@@ -373,7 +371,6 @@ export async function getServerSideProps(ctx: GetServerSidePropsContext) {
 
 		return {
 			props: {
-				isCloud: IS_CLOUD,
 				token: token,
 				invitation: invitation,
 			},

@@ -1,4 +1,4 @@
-import { IS_CLOUD, shouldDeploy } from "@dokploy/server";
+import { shouldDeploy } from "@dokploy/server";
 import { db } from "@dokploy/server/db";
 import { eq } from "drizzle-orm";
 import type { NextApiRequest, NextApiResponse } from "next";
@@ -179,7 +179,7 @@ export default async function handler(
 				server: !!composeResult.serverId,
 			};
 
-			if (IS_CLOUD && composeResult.serverId) {
+			if (composeResult.serverId) {
 				jobData.serverId = composeResult.serverId;
 				deploy(jobData).catch((error) => {
 					console.error("Background deployment failed:", error);

@@ -5,7 +5,6 @@ import {
 	findGithubById,
 	findPreviewDeploymentByApplicationId,
 	findPreviewDeploymentsByPullRequestId,
-	IS_CLOUD,
 	removePreviewDeployment,
 	shouldDeploy,
 } from "@dokploy/server";
@@ -126,7 +125,7 @@ export default async function handler(
 					server: !!app.serverId,
 				};
 
-				if (IS_CLOUD && app.serverId) {
+				if (app.serverId) {
 					jobData.serverId = app.serverId;
 					deploy(jobData).catch((error) => {
 						console.error("Background deployment failed:", error);
@@ -165,7 +164,7 @@ export default async function handler(
 					server: !!composeApp.serverId,
 				};
 
-				if (IS_CLOUD && composeApp.serverId) {
+				if (composeApp.serverId) {
 					jobData.serverId = composeApp.serverId;
 					deploy(jobData).catch((error) => {
 						console.error("Background deployment failed:", error);
@@ -248,7 +247,7 @@ export default async function handler(
 					continue;
 				}
 
-				if (IS_CLOUD && app.serverId) {
+				if (app.serverId) {
 					jobData.serverId = app.serverId;
 					deploy(jobData).catch((error) => {
 						console.error("Background deployment failed:", error);
@@ -295,7 +294,7 @@ export default async function handler(
 				if (!shouldDeployPaths) {
 					continue;
 				}
-				if (IS_CLOUD && composeApp.serverId) {
+				if (composeApp.serverId) {
 					jobData.serverId = composeApp.serverId;
 					deploy(jobData).catch((error) => {
 						console.error("Background deployment failed:", error);
@@ -504,7 +503,7 @@ export default async function handler(
 				};
 
 				if (previewDeploymentId) {
-					if (IS_CLOUD && app.serverId) {
+					if (app.serverId) {
 						jobData.serverId = app.serverId;
 						deploy(jobData).catch((error) => {
 							console.error("Background deployment failed:", error);

@@ -1,4 +1,4 @@
-import { IS_CLOUD, isAdminPresent } from "@dokploy/server";
+import { isAdminPresent } from "@dokploy/server";
 import { validateRequest } from "@dokploy/server/lib/auth";
 import { standardSchemaResolver as zodResolver } from "@hookform/resolvers/standard-schema";
 import { REGEXP_ONLY_DIGITS } from "input-otp";
@@ -10,9 +10,6 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import { OnboardingLayout } from "@/components/layouts/onboarding-layout";
-import { SignInWithGithub } from "@/components/proprietary/auth/sign-in-with-github";
-import { SignInWithGoogle } from "@/components/proprietary/auth/sign-in-with-google";
-import { SignInWithSSO } from "@/components/proprietary/sso/sign-in-with-sso";
 import { AlertBlock } from "@/components/shared/alert-block";
 import { Logo } from "@/components/shared/logo";
 import { Button } from "@/components/ui/button";
@@ -54,13 +51,9 @@ const _TwoFactorSchema = z.object({
 
 type LoginForm = z.infer<typeof LoginSchema>;
 
-interface Props {
-	IS_CLOUD: boolean;
-}
-export default function Home({ IS_CLOUD }: Props) {
+export default function Home() {
 	const router = useRouter();
 	const { config: whitelabeling } = useWhitelabelingPublic();
-	const { data: showSignInWithSSO } = api.sso.showSignInWithSSO.useQuery();
 	const [isLoginLoading, setIsLoginLoading] = useState(false);
 	const [isTwoFactorLoading, setIsTwoFactorLoading] = useState(false);
 	const [isBackupCodeLoading, setIsBackupCodeLoading] = useState(false);
@@ -167,8 +160,6 @@ export default function Home({ IS_CLOUD }: Props) {
 
 	const loginContent = (
 		<>
-			{IS_CLOUD && <SignInWithGithub />}
-			{IS_CLOUD && <SignInWithGoogle />}
 			<Form {...loginForm}>
 				<form
 					onSubmit={loginForm.handleSubmit(onSubmit)}
@@ -240,13 +231,7 @@ export default function Home({ IS_CLOUD }: Props) {
 			)}
 			<CardContent className="p-0">
 				{!isTwoFactor ? (
-					<>
-						{showSignInWithSSO ? (
-							<SignInWithSSO>{loginContent}</SignInWithSSO>
-						) : (
-							loginContent
-						)}
-					</>
+					<>{loginContent}</>
 				) : (
 					<>
 						<form
@@ -362,33 +347,22 @@ export default function Home({ IS_CLOUD }: Props) {
 
 				<div className="flex flex-row justify-between flex-wrap">
 					<div className="mt-4 text-center text-sm flex flex-row justify-center gap-2">
-						{IS_CLOUD && (
-							<Link
-								className="hover:underline text-muted-foreground"
-								href="/register"
-							>
-								Create an account
-							</Link>
-						)}
+						<Link
+							className="hover:underline text-muted-foreground"
+							href="/register"
+						>
+							Create an account
+						</Link>
 					</div>
 
 					<div className="mt-4 text-sm flex flex-row justify-center gap-2">
-						{IS_CLOUD ? (
-							<Link
-								className="hover:underline text-muted-foreground"
-								href="/send-reset-password"
-							>
-								Lost your password?
-							</Link>
-						) : (
-							<Link
-								className="hover:underline text-muted-foreground"
-								href="https://docs.dokploy.com/docs/core/reset-password"
-								target="_blank"
-							>
-								Lost your password?
-							</Link>
-						)}
+						<Link
+							className="hover:underline text-muted-foreground"
+							href="https://docs.dokploy.com/docs/core/reset-password"
+							target="_blank"
+						>
+							Lost your password?
+						</Link>
 					</div>
 				</div>
 				<div className="p-2" />
@@ -401,25 +375,18 @@ Home.getLayout = (page: ReactElement) => {
 	return <OnboardingLayout>{page}</OnboardingLayout>;
 };
 export async function getServerSideProps(context: GetServerSidePropsContext) {
-	if (IS_CLOUD) {
-		try {
-			const { user } = await validateRequest(context.req);
-			if (user) {
-				return {
-					redirect: {
-						permanent: true,
-						destination: "/dashboard/projects",
-					},
-				};
-			}
-		} catch {}
+	try {
+		const { user } = await validateRequest(context.req);
+		if (user) {
+			return {
+				redirect: {
+					permanent: true,
+					destination: "/dashboard/projects",
+				},
+			};
+		}
+	} catch {}
 
-		return {
-			props: {
-				IS_CLOUD: IS_CLOUD,
-			},
-		};
-	}
 	const hasAdmin = await isAdminPresent();
 
 	if (!hasAdmin) {
@@ -431,20 +398,7 @@ export async function getServerSideProps(context: GetServerSidePropsContext) {
 		};
 	}
 
-	const { user } = await validateRequest(context.req);
-
-	if (user) {
-		return {
-			redirect: {
-				permanent: true,
-				destination: "/dashboard/projects",
-			},
-		};
-	}
-
 	return {
-		props: {
-			hasAdmin,
-		},
+		props: {},
 	};
 }

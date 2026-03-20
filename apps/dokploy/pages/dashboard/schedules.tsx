@@ -1,4 +1,3 @@
-import { IS_CLOUD } from "@dokploy/server/constants";
 import { validateRequest } from "@dokploy/server/lib/auth";
 import type { GetServerSidePropsContext } from "next";
 import type { ReactElement } from "react";
@@ -31,14 +30,6 @@ SchedulesPage.getLayout = (page: ReactElement) => {
 export async function getServerSideProps(
 	ctx: GetServerSidePropsContext<{ serviceId: string }>,
 ) {
-	if (IS_CLOUD) {
-		return {
-			redirect: {
-				permanent: true,
-				destination: "/dashboard/projects",
-			},
-		};
-	}
 	const { user } = await validateRequest(ctx.req);
 	if (!user || (user.role !== "owner" && user.role !== "admin")) {
 		return {

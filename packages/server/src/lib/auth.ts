@@ -1,13 +1,12 @@
 import type { IncomingMessage } from "node:http";
 import { apiKey } from "@better-auth/api-key";
-import { sso } from "@better-auth/sso";
 import * as bcrypt from "bcrypt";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError } from "better-auth/api";
 import { admin, organization, twoFactor } from "better-auth/plugins";
 import { and, desc, eq } from "drizzle-orm";
-import { BETTER_AUTH_SECRET, IS_CLOUD } from "../constants";
+import { BETTER_AUTH_SECRET } from "../constants";
 import { db } from "../db";
 import * as schema from "../db/schema";
 import {
@@ -15,7 +14,6 @@ import {
 	getTrustedProviders,
 	getUserByToken,
 } from "../services/admin";
-import { createAuditLog } from "../services/proprietary/audit-log";
 import {
 	getWebServerSettings,
 	updateWebServerSettings,
@@ -77,9 +75,6 @@ const { handler, api } = betterAuth({
 	},
 	async trustedOrigins() {
 		try {
-			if (IS_CLOUD) {
-				return await getTrustedOrigins();
-			}
 			const [trustedOrigins, settings] = await Promise.all([
 				getTrustedOrigins(),
 				getWebServerSettings(),
@@ -106,22 +101,11 @@ const { handler, api } = betterAuth({
 	emailVerification: {
 		sendOnSignUp: true,
 		autoSignInAfterVerification: true,
-		sendVerificationEmail: async ({ user, url }) => {
-			if (IS_CLOUD) {
-				await sendEmail({
-					email: user.email,
-					subject: "Verify your email",
-					text: `
-				<p>Click the link to verify your email: <a href="${url}">Verify Email</a></p>
-				`,
-				});
-			}
-		},
 	},
 	emailAndPassword: {
 		enabled: true,
-		autoSignIn: !IS_CLOUD,
-		requireEmailVerification: IS_CLOUD && process.env.NODE_ENV === "production",
+		autoSignIn: true,
+		requireEmailVerification: false,
 		password: {
 			async hash(password) {
 				return bcrypt.hashSync(password, 10);
@@ -144,113 +128,56 @@ const { handler, api } = betterAuth({
 		user: {
 			create: {
 				before: async (_user, context) => {
-					if (!IS_CLOUD) {
-						const xDokployToken =
-							context?.request?.headers?.get("x-dokploy-token");
-						if (xDokployToken) {
-							const user = await getUserByToken(xDokployToken);
-							if (!user) {
-								throw new APIError("BAD_REQUEST", {
-									message: "User not found",
-								});
-							}
-						} else {
-							const isSSORequest = context?.path.includes("/sso");
-							if (isSSORequest) {
-								return;
-							}
-							const isAdminPresent = await db.query.member.findFirst({
-								where: eq(schema.member.role, "owner"),
+					const xDokployToken =
+						context?.request?.headers?.get("x-dokploy-token");
+					if (xDokployToken) {
+						const user = await getUserByToken(xDokployToken);
+						if (!user) {
+							throw new APIError("BAD_REQUEST", {
+								message: "User not found",
 							});
-							if (isAdminPresent) {
-								throw new APIError("BAD_REQUEST", {
-									message: "Admin is already created",
-								});
-							}
+						}
+					} else {
+						const isAdminPresent = await db.query.member.findFirst({
+							where: eq(schema.member.role, "owner"),
+						});
+						if (isAdminPresent) {
+							throw new APIError("BAD_REQUEST", {
+								message: "Admin is already created",
+							});
 						}
 					}
 				},
-				after: async (user, context) => {
-					const isSSORequest = context?.path.includes("/sso");
+				after: async (user) => {
 					const isAdminPresent = await db.query.member.findFirst({
 						where: eq(schema.member.role, "owner"),
 					});
 
-					if (!IS_CLOUD) {
+					if (!isAdminPresent) {
 						await updateWebServerSettings({
 							serverIp: await getPublicIpWithFallback(),
 						});
 					}
 
-					if (IS_CLOUD) {
-						try {
-							const hutk = getHubSpotUTK(
-								context?.request?.headers?.get("cookie") || undefined,
-							);
-							// Cast to include additional fields
-							const userWithFields = user as typeof user & {
-								lastName?: string;
-							};
-							const hubspotSuccess = await submitToHubSpot(
-								{
-									email: user.email,
-									firstName: user.name || "", // name is mapped to firstName column
-									lastName: userWithFields.lastName || "",
-								},
-								hutk,
-							);
-							if (!hubspotSuccess) {
-								console.error("Failed to submit to HubSpot");
-							}
-						} catch (error) {
-							console.error("Error submitting to HubSpot", error);
-						}
-					}
-
-					if (IS_CLOUD || !isAdminPresent) {
-						await db.transaction(async (tx) => {
-							const organization = await tx
-								.insert(schema.organization)
-								.values({
-									name: "My Organization",
-									ownerId: user.id,
-									createdAt: new Date(),
-								})
-								.returning()
-								.then((res) => res[0]);
-
-							await tx.insert(schema.member).values({
-								userId: user.id,
-								organizationId: organization?.id || "",
-								role: "owner",
+					await db.transaction(async (tx) => {
+						const organization = await tx
+							.insert(schema.organization)
+							.values({
+								name: "My Organization",
+								ownerId: user.id,
 								createdAt: new Date(),
-								isDefault: true, // Mark first organization as default
-							});
-						});
-					} else if (isSSORequest) {
-						const providerId = context?.params?.providerId;
-						if (!providerId) {
-							throw new APIError("BAD_REQUEST", {
-								message: "Provider ID is required",
-							});
-						}
-						const provider = await db.query.ssoProvider.findFirst({
-							where: eq(schema.ssoProvider.providerId, providerId),
-						});
+							})
+							.returning()
+							.then((res) => res[0]);
 
-						if (!provider) {
-							throw new APIError("BAD_REQUEST", {
-								message: "Provider not found",
-							});
-						}
-						await db.insert(schema.member).values({
+						await tx.insert(schema.member).values({
 							userId: user.id,
-							organizationId: provider?.organizationId || "",
-							role: "member",
+							organizationId: organization?.id || "",
+							role: "owner",
 							createdAt: new Date(),
 							isDefault: true,
 						});
-					}
+					});
 				},
 			},
 		},
@@ -290,14 +217,6 @@ const { handler, api } = betterAuth({
 						with: { user: true },
 					});
 					if (!memberRecord) return;
-					await createAuditLog({
-						organizationId: orgId,
-						userId: session.userId,
-						userEmail: memberRecord.user.email,
-						userRole: memberRecord.role,
-						action: "login",
-						resourceType: "session",
-					});
 				},
 			},
 			delete: {
@@ -314,14 +233,6 @@ const { handler, api } = betterAuth({
 						with: { user: true },
 					});
 					if (!memberRecord) return;
-					await createAuditLog({
-						organizationId: orgId,
-						userId: session.userId,
-						userEmail: memberRecord.user.email,
-						userRole: memberRecord.role,
-						action: "logout",
-						resourceType: "session",
-					});
 				},
 			},
 		},
@@ -338,12 +249,12 @@ const { handler, api } = betterAuth({
 		additionalFields: {
 			role: {
 				type: "string",
-				// required: true,
+				required: false,
 				input: false,
 			},
 			ownerId: {
 				type: "string",
-				// required: true,
+				required: false,
 				input: false,
 			},
 			allowImpersonation: {
@@ -357,16 +268,6 @@ const { handler, api } = betterAuth({
 				input: true,
 				defaultValue: "",
 			},
-			enableEnterpriseFeatures: {
-				type: "boolean",
-				required: false,
-				input: false,
-			},
-			isValidEnterpriseLicense: {
-				type: "boolean",
-				required: false,
-				input: false,
-			},
 		},
 	},
 	plugins: [
@@ -374,7 +275,6 @@ const { handler, api } = betterAuth({
 			enableMetadata: true,
 			references: "user",
 		}),
-		sso(),
 		twoFactor(),
 		organization({
 			ac,
@@ -388,38 +288,30 @@ const { handler, api } = betterAuth({
 				maximumRolesPerOrganization: 10,
 			},
 			async sendInvitationEmail(data, _request) {
-				if (IS_CLOUD) {
-					const host =
-						process.env.NODE_ENV === "development"
-							? "http://localhost:3000"
-							: "https://app.dokploy.com";
-					const inviteLink = `${host}/invitation?token=${data.id}`;
+				const host =
+					process.env.NODE_ENV === "development"
+						? "http://localhost:3000"
+						: "https://app.dokploy.com";
+				const inviteLink = `${host}/invitation?token=${data.id}`;
 
-					await sendEmail({
-						email: data.email,
-						subject: "Invitation to join organization",
-						text: `
-					<p>You are invited to join ${data.organization.name} on Dokploy. Click the link to accept the invitation: <a href="${inviteLink}">Accept Invitation</a></p>
-					`,
-					});
-				}
+				await sendEmail({
+					email: data.email,
+					subject: "Invitation to join organization",
+					text: `
+				<p>You are invited to join ${data.organization.name} on Dokploy. Click the link to accept the invitation: <a href="${inviteLink}">Accept Invitation</a></p>
+				`,
+				});
 			},
 		}),
-		...(IS_CLOUD
-			? [
-					admin({
-						adminUserIds: [process.env.USER_ADMIN_ID as string],
-					}),
-				]
-			: []),
+		admin({
+			adminUserIds: [process.env.USER_ADMIN_ID as string],
+		}),
 	],
 });
 
 const _auth = {
 	handler,
 	createApiKey: api.createApiKey,
-	registerSSOProvider: api.registerSSOProvider,
-	updateSSOProvider: api.updateSSOProvider,
 };
 
 export type AuthType = typeof _auth;
@@ -502,8 +394,6 @@ export const validateRequest = async (request: IncomingMessage) => {
 					twoFactorEnabled: userFromDb.twoFactorEnabled,
 					role: member?.role || "member",
 					ownerId: member?.organization.ownerId || apiKeyRecord.user.id,
-					enableEnterpriseFeatures: userFromDb.enableEnterpriseFeatures,
-					isValidEnterpriseLicense: userFromDb.isValidEnterpriseLicense,
 				},
 			};
 
@@ -552,10 +442,6 @@ export const validateRequest = async (request: IncomingMessage) => {
 		});
 
 		session.user.role = member?.role || "member";
-		session.user.enableEnterpriseFeatures =
-			member?.user.enableEnterpriseFeatures || false;
-		session.user.isValidEnterpriseLicense =
-			member?.user.isValidEnterpriseLicense || false;
 		session.session.activeOrganizationId = member?.organization.id || "";
 		if (member) {
 			session.user.ownerId = member.organization.ownerId;

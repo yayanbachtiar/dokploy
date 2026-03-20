@@ -14,7 +14,6 @@ import { account, apikey, organization } from "./account";
 import { backups } from "./backups";
 import { projects } from "./project";
 import { schedules } from "./schedule";
-import { ssoProvider } from "./sso";
 /**
  * This is an example of how to use the multi-project schema feature of Drizzle ORM. Use the same
  * database instance for multiple projects.
@@ -52,20 +51,7 @@ export const user = pgTable("user", {
 	// Admin
 	role: text("role").notNull().default("user"),
 	// Metrics
-	enablePaidFeatures: boolean("enablePaidFeatures").notNull().default(false),
 	allowImpersonation: boolean("allowImpersonation").notNull().default(false),
-	// Enterprise / proprietary features
-	enableEnterpriseFeatures: boolean("enableEnterpriseFeatures")
-		.notNull()
-		.default(false),
-	licenseKey: text("licenseKey"),
-	isValidEnterpriseLicense: boolean("isValidEnterpriseLicense")
-		.notNull()
-		.default(false),
-	stripeCustomerId: text("stripeCustomerId"),
-	stripeSubscriptionId: text("stripeSubscriptionId"),
-	serversQuantity: integer("serversQuantity").notNull().default(0),
-	trustedOrigins: text("trustedOrigins").array(),
 });
 
 export const usersRelations = relations(user, ({ one, many }) => ({
@@ -76,7 +62,6 @@ export const usersRelations = relations(user, ({ one, many }) => ({
 	organizations: many(organization),
 	projects: many(projects),
 	apiKeys: many(apikey),
-	ssoProviders: many(ssoProvider),
 	backups: many(backups),
 	schedules: many(schedules),
 }));
@@ -86,8 +71,6 @@ const createSchema = createInsertSchema(user, {
 	isRegistered: z.boolean().optional(),
 }).omit({
 	role: true,
-	trustedOrigins: true,
-	isValidEnterpriseLicense: true,
 });
 
 export const apiCreateUserInvitation = createSchema.pick({}).extend({

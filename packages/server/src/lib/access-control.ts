@@ -50,32 +50,6 @@ export const statements = {
 	auditLog: ["read"],
 } as const;
 
-/**
- * Enterprise-only resources. For static roles (owner/admin/member),
- * permission checks on these resources are bypassed — they only apply
- * when using custom roles with an enterprise license.
- */
-export const enterpriseOnlyResources = new Set<string>([
-	"volume",
-	"deployment",
-	"envVars",
-	"projectEnvVars",
-	"environmentEnvVars",
-	"server",
-	"registry",
-	"certificate",
-	"backup",
-	"volumeBackup",
-	"schedule",
-	"domain",
-	"destination",
-	"notification",
-	"tag",
-	"logs",
-	"monitoring",
-	"auditLog",
-]);
-
 export const ac = createAccessControl(statements);
 
 /**

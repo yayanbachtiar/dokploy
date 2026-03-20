@@ -10,7 +10,6 @@ import {
 import { nanoid } from "nanoid";
 import { projects } from "./project";
 import { server } from "./server";
-import { ssoProvider } from "./sso";
 import { user } from "./user";
 
 export const account = pgTable("account", {
@@ -110,7 +109,6 @@ export const organizationRelations = relations(
 		servers: many(server),
 		projects: many(projects),
 		members: many(member),
-		ssoProviders: many(ssoProvider),
 		roles: many(organizationRole),
 	}),
 );
