@@ -6,7 +6,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError } from "better-auth/api";
 import { admin, organization, twoFactor } from "better-auth/plugins";
 import { and, desc, eq } from "drizzle-orm";
-import { BETTER_AUTH_SECRET } from "../constants";
+import { BETTER_AUTH_SECRET, IS_CLOUD } from "../constants";
 import { db } from "../db";
 import * as schema from "../db/schema";
 import {

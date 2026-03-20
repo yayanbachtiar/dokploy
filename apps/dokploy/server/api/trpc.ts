@@ -9,7 +9,7 @@
 
 // import { getServerAuthSession } from "@/server/auth";
 import { db } from "@dokploy/server/db";
-import { hasValidLicense } from "@dokploy/server/index";
+const hasValidLicense = async (_orgId: string) => false;
 import type { statements } from "@dokploy/server/lib/access-control";
 import { validateRequest } from "@dokploy/server/lib/auth";
 import { checkPermission } from "@dokploy/server/services/permission";

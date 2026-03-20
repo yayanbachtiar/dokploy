@@ -1,5 +1,7 @@
-import { createAuditLog } from "@dokploy/server/services/proprietary/audit-log";
-import type { AuditAction, AuditResourceType } from "@dokploy/server/db/schema";
+// import { createAuditLog } from "@dokploy/server/services/proprietary/audit-log";
+// import type { AuditAction, AuditResourceType } from "@dokploy/server/db/schema";
+type AuditAction = string;
+type AuditResourceType = string;
 
 interface AuditCtx {
 	user: { id: string; email: string; role: string };
@@ -21,11 +23,4 @@ interface AuditEvent {
  * Usage:
  *   await audit(ctx, { action: "create", resourceType: "project", resourceName: "my-app" });
  */
-export const audit = (ctx: AuditCtx, event: AuditEvent) =>
-	createAuditLog({
-		organizationId: ctx.session.activeOrganizationId,
-		userId: ctx.user.id,
-		userEmail: ctx.user.email,
-		userRole: ctx.user.role,
-		...event,
-	});
+export const audit = (_ctx: AuditCtx, _event: AuditEvent) => Promise.resolve();

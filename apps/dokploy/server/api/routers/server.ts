@@ -20,7 +20,7 @@ import { TRPCError } from "@trpc/server";
 import { observable } from "@trpc/server/observable";
 import { and, desc, eq, getTableColumns, isNotNull, sql } from "drizzle-orm";
 import { z } from "zod";
-import { updateServersBasedOnQuantity } from "@/pages/api/stripe/webhook";
+// import { updateServersBasedOnQuantity } from "@/pages/api/stripe/webhook";
 import { audit } from "@/server/api/utils/audit";
 import {
 	createTRPCRouter,
@@ -51,12 +51,12 @@ export const serverRouter = createTRPCRouter({
 			try {
 				const user = await findUserById(ctx.user.ownerId);
 				const servers = await findServersByUserId(user.id);
-				if (IS_CLOUD && servers.length >= user.serversQuantity) {
+				/* if (IS_CLOUD && servers.length >= user.serversQuantity) {
 					throw new TRPCError({
 						code: "BAD_REQUEST",
 						message: "You cannot create more servers",
 					});
-				}
+				} */
 				const project = await createServer(
 					input,
 					ctx.session.activeOrganizationId,
@@ -385,7 +385,7 @@ export const serverRouter = createTRPCRouter({
 				if (IS_CLOUD) {
 					const admin = await findUserById(ctx.user.ownerId);
 
-					await updateServersBasedOnQuantity(admin.id, admin.serversQuantity);
+					// await updateServersBasedOnQuantity(admin.id, admin.serversQuantity);
 				}
 
 				return currentServer;

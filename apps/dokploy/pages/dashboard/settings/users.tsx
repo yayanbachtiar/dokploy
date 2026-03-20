@@ -4,7 +4,7 @@ import type { GetServerSidePropsContext } from "next";
 import type { ReactElement } from "react";
 import superjson from "superjson";
 import { DashboardLayout } from "@/components/layouts/dashboard-layout";
-import { ManageCustomRoles } from "@/components/proprietary/roles/manage-custom-roles";
+// import { ManageCustomRoles } from "@/components/proprietary/roles/manage-custom-roles";
 import { ShowInvitations } from "@/components/dashboard/settings/users/show-invitations";
 import { ShowUsers } from "@/components/dashboard/settings/users/show-users";
 import { appRouter } from "@/server/api/root";
@@ -20,7 +20,7 @@ const Page = () => {
 		<div className="flex flex-col gap-4 w-full">
 			<ShowUsers />
 			{canCreateMembers && <ShowInvitations />}
-			{isOwnerOrAdmin && <ManageCustomRoles />}
+			{/* {isOwnerOrAdmin && <ManageCustomRoles />} */}
 		</div>
 	);
 };

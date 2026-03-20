@@ -1,0 +1,99 @@
+version: '3.8'
+
+services:
+  dokploy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dokploy
+    restart: always
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - ADVERTISE_ADDR=${ADVERTISE_ADDR}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - dokploy_data:/etc/dokploy
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - dokploy-network
+
+  postgres:
+    image: postgres:16
+    container_name: dokploy-postgres
+    restart: always
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dokploy-network
+
+  redis:
+    image: redis:7
+    container_name: dokploy-redis
+    restart: always
+    volumes:
+      - redis_data:/data
+    networks:
+      - dokploy-network
+
+  monitoring:
+    build:
+      context: .
+      dockerfile: Dockerfile.monitoring
+    container_name: dokploy-monitoring
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "3001:3001"
+    networks:
+      - dokploy-network
+
+  schedules:
+    build:
+      context: .
+      dockerfile: Dockerfile.schedule
+    container_name: dokploy-schedule
+    restart: always
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+    depends_on:
+      - postgres
+    networks:
+      - dokploy-network
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: dokploy-api
+    restart: always
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+    depends_on:
+      - postgres
+    networks:
+      - dokploy-network
+
+networks:
+  dokploy-network:
+    driver: bridge
+
+volumes:
+  dokploy_data:
+  postgres_data:
+  redis_data:

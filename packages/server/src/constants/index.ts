@@ -8,6 +8,8 @@ export const DOKPLOY_DOCKER_PORT = process.env.DOKPLOY_DOCKER_PORT
 	? Number(process.env.DOKPLOY_DOCKER_PORT)
 	: undefined;
 
+export const IS_CLOUD = false;
+
 export const CLEANUP_CRON_JOB = "50 23 * * *";
 export const docker = new Docker({
 	...(DOKPLOY_DOCKER_API_VERSION && {

@@ -388,30 +388,6 @@ const MENU: Menu = {
 			// Only enabled for owners in cloud environments
 			isEnabled: ({ auth, isCloud }) => !!(auth?.role === "owner" && isCloud),
 		},
-		{
-			isSingle: true,
-			title: "License",
-			url: "/dashboard/settings/license",
-			icon: Key,
-			// Only enabled for owners
-			isEnabled: ({ auth }) => !!(auth?.role === "owner"),
-		},
-		{
-			isSingle: true,
-			title: "SSO",
-			url: "/dashboard/settings/sso",
-			icon: LogIn,
-			// Enabled for admins in both cloud and self-hosted (enterprise)
-			isEnabled: ({ permissions }) => !!permissions?.organization.update,
-		},
-		{
-			isSingle: true,
-			title: "Whitelabeling",
-			url: "/dashboard/settings/whitelabeling",
-			icon: Palette,
-			// Only enabled for owners in non-cloud environments (enterprise)
-			isEnabled: ({ auth, isCloud }) => !!(auth?.role === "owner" && !isCloud),
-		},
 	],
 
 	help: [

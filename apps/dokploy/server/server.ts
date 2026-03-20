@@ -6,7 +6,6 @@ import {
 	IS_CLOUD,
 	initCancelDeployments,
 	initCronJobs,
-	initEnterpriseBackupCronJobs,
 	initializeNetwork,
 	initSchedules,
 	initVolumeBackupsCronJobs,
@@ -68,7 +67,6 @@ void app.prepare().then(async () => {
 
 		server.listen(PORT, HOST);
 		console.log(`Server Started on: http://${HOST}:${PORT}`);
-		await initEnterpriseBackupCronJobs();
 
 		if (!IS_CLOUD) {
 			console.log("Starting Deployment Worker");
