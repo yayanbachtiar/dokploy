@@ -24,16 +24,38 @@ print_step() {
     local step=$1
     local total=$2
     local title=$3
-    echo -e "\n${BOLD}${BLUE}[Step $step/$total]${NC} ${BOLD}$title${NC}"
-    echo "--------------------------------------------------------"
+    printf "\n${BOLD}${BLUE}[Step %s/%s]${NC} ${BOLD}%s${NC}\n" "$step" "$total" "$title"
+    printf "--------------------------------------------------------\n"
 }
 
 print_success() {
-    echo -e "${GREEN}✔ $1${NC}"
+    printf "${GREEN}✔ %s${NC}\n" "$1"
 }
 
 print_error() {
-    echo -e "${RED}✘ $1${NC}"
+    printf "${RED}✘ %s${NC}\n" "$1"
+}
+
+get_ip() {
+    local ip=""
+    # Try IPv4 first
+    ip=$(curl -4s --connect-timeout 5 https://ifconfig.io 2>/dev/null)
+    if [ -z "$ip" ]; then ip=$(curl -4s --connect-timeout 5 https://icanhazip.com 2>/dev/null); fi
+    if [ -z "$ip" ]; then ip=$(curl -4s --connect-timeout 5 https://ipecho.net/plain 2>/dev/null); fi
+    # Fallback to IPv6
+    if [ -z "$ip" ]; then
+        ip=$(curl -6s --connect-timeout 5 https://ifconfig.io 2>/dev/null)
+        if [ -z "$ip" ]; then ip=$(curl -6s --connect-timeout 5 https://icanhazip.com 2>/dev/null); fi
+    fi
+    if [ -z "$ip" ]; then
+        print_error "Could not determine server IP address automatically. Set ADVERTISE_ADDR manually."
+        exit 1
+    fi
+    echo "$ip"
+}
+
+get_private_ip() {
+    ip addr show | grep -E "inet (192\.168\.|10\.|172\.1[6-9]\.|172\.2[0-9]\.|172\.3[0-1]\.)" | head -n1 | awk '{print $2}' | cut -d/ -f1
 }
 
 detect_version() {
@@ -146,21 +168,25 @@ wait_for_service() {
 }
 
 init_swarm() {
-    if docker info --format '{{.Swarm.LocalNodeState}}' | grep -q "active"; then
-        echo "Docker Swarm already active."
+    # Check if the node is already part of a swarm AND is a manager
+    local swarm_state=$(docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null)
+    local is_manager=$(docker info --format '{{.Swarm.ControlAvailable}}' 2>/dev/null)
+    
+    if [ "$swarm_state" = "active" ] && [ "$is_manager" = "true" ]; then
+        echo "Docker Swarm already active and node is a manager."
         return 0
     fi
 
     local advertise_addr="${ADVERTISE_ADDR:-$(get_private_ip)}"
     if [ -z "$advertise_addr" ]; then
-        echo "ERROR: Could not find private IP. Set ADVERTISE_ADDR manually."
-        exit 1
+        # Fallback to get_ip if private IP not found
+        advertise_addr=$(get_ip)
     fi
     
     echo "Initializing Docker Swarm on $advertise_addr..."
     docker swarm init --advertise-addr "$advertise_addr" ${DOCKER_SWARM_INIT_ARGS:-}
     if [ $? -ne 0 ]; then
-        echo "Error: Failed to initialize Docker Swarm" >&2
+        print_error "Failed to initialize Docker Swarm. If this node is already in a swarm as a worker, please leave the swarm first: 'docker swarm leave'"
         return 1
     fi
 }
@@ -288,7 +314,7 @@ install_dokploy() {
 
     # Detect version tag
     VERSION_TAG=$(detect_version)
-    echo -e "${BOLD}${BLUE}Starting Dokploy Installation (Version: ${VERSION_TAG})${NC}"
+    printf "${BOLD}${BLUE}Starting Dokploy Installation (Version: %s)${NC}\n" "${VERSION_TAG}"
 
     # Step 1: Pre-checks
     print_step $CURRENT_STEP $TOTAL_STEPS "System Environment Checks"
@@ -315,6 +341,7 @@ install_dokploy() {
     # Step 2: Swarm Initialization
     print_step $CURRENT_STEP $TOTAL_STEPS "Docker Swarm Initialization"
     docker swarm leave --force 2>/dev/null
+    sleep 2 # Wait for Docker to process the leave command
     init_swarm || { print_error "Failed to initialize Swarm"; exit 1; }
     print_success "Swarm initialized successfully."
     CURRENT_STEP=$((CURRENT_STEP + 1))
@@ -353,10 +380,9 @@ install_dokploy() {
     }
     
     local formatted_addr=$(format_ip_for_url "$public_ip")
-    echo ""
-    echo -e "${GREEN}${BOLD}Congratulations, Dokploy is installed!${NC}"
-    echo -e "${BLUE}Please wait a few seconds for all services to fully stabilize.${NC}"
-    echo -e "${YELLOW}Access your dashboard at: ${BOLD}http://${formatted_addr}:3000${NC}"
+    printf "\n${GREEN}${BOLD}Congratulations, Dokploy is installed!${NC}\n"
+    printf "${BLUE}Please wait a few seconds for all services to fully stabilize.${NC}\n"
+    printf "${YELLOW}Access your dashboard at: ${BOLD}http://%s:3000${NC}\n" "${formatted_addr}"
 }
 
 uninstall_dokploy() {
