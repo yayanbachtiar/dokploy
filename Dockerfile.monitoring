@@ -5,19 +5,24 @@ FROM golang:1.21-alpine3.19 AS builder
 # Instalar dependencias necesarias
 RUN apk add --no-cache gcc musl-dev sqlite-dev
 
-# Establecer el directorio de trabajo
+# Establecer el directorio de kerja
 WORKDIR /app
 
-# Copiar todo el código fuente primero
-COPY . .
+# Copiar archivos de dependencias para caching
+COPY apps/monitoring/go.mod apps/monitoring/go.sum ./apps/monitoring/
 
-# Movernos al directorio de la aplicación golang
+# Movernos al direktori aplikasi
 WORKDIR /app/apps/monitoring
 
 # Descargar dependencias
 RUN go mod download
 
-# Compilar la aplicación
+# Kembali ke root dan salin sisa kode
+WORKDIR /app
+COPY . .
+
+# Compilar la aplikasi
+WORKDIR /app/apps/monitoring
 RUN CGO_ENABLED=1 GOOS=linux go build -o main main.go
 
 # Etapa final

@@ -6,13 +6,27 @@ RUN corepack enable
 RUN corepack prepare pnpm@10.22.0 --activate
 
 FROM base AS build
-COPY . /usr/src/app
 WORKDIR /usr/src/app
 
-RUN apt-get update && apt-get install -y python3 make g++ git python3-pip pkg-config libsecret-1-dev && rm -rf /var/lib/apt/lists/*
+# Optimized APT cache using BuildKit mounts
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y \
+    python3 make g++ git python3-pip pkg-config libsecret-1-dev
 
-# Install dependencies
+# Copy only package management files first to cache pnpm install
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY apps/api/package.json ./apps/api/
+COPY apps/dokploy/package.json ./apps/dokploy/
+COPY apps/schedules/package.json ./apps/schedules/
+COPY packages/server/package.json ./packages/server/
+COPY packages/server/src/emails/package.json ./packages/server/src/emails/
+
+# Install dependencies using pnpm cache
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
+
+# Copy the rest of the source code
+COPY . .
 
 # Deploy only the dokploy app
 

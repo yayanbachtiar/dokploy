@@ -1,25 +1,45 @@
-import { api } from "@/utils/api";
+/**
+ * Stub hooks for whitelabeling config.
+ * The whitelabeling router has been removed from this OSS build.
+ * These hooks return null so all consumers continue to work with default values.
+ */
 
 /**
  * Hook to access whitelabeling config for authenticated pages (dashboard, services, etc.).
- * Requires the user to be logged in.
+ * Returns null since whitelabeling is not available in this build.
  */
 export function useWhitelabeling() {
-	const { data, ...rest } = api.whitelabeling.get.useQuery(undefined, {
-		staleTime: 5 * 60 * 1000,
-		refetchOnWindowFocus: false,
-	});
-	return { config: data ?? null, ...rest };
+	return {
+		config: null as null | {
+			docsUrl?: string | null;
+			supportUrl?: string | null;
+			logoUrl?: string | null;
+			loginLogoUrl?: string | null;
+			appName?: string | null;
+			appDescription?: string | null;
+		},
+		isLoading: false,
+		isError: false,
+		error: null,
+	};
 }
 
 /**
  * Hook to access the public whitelabeling config.
- * Only for unauthenticated pages (login, register, error, invitation, password reset).
+ * Returns null since whitelabeling is not available in this build.
  */
 export function useWhitelabelingPublic() {
-	const { data, ...rest } = api.whitelabeling.getPublic.useQuery(undefined, {
-		staleTime: 5 * 60 * 1000,
-		refetchOnWindowFocus: false,
-	});
-	return { config: data ?? null, ...rest };
+	return {
+		config: null as null | {
+			docsUrl?: string | null;
+			supportUrl?: string | null;
+			logoUrl?: string | null;
+			loginLogoUrl?: string | null;
+			appName?: string | null;
+			appDescription?: string | null;
+		},
+		isLoading: false,
+		isError: false,
+		error: null,
+	};
 }

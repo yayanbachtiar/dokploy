@@ -20,23 +20,26 @@ export const OnboardingLayout = ({ children }: Props) => {
 
 	return (
 		<div className="container relative min-h-svh flex-col items-center justify-center flex lg:max-w-none lg:grid lg:grid-cols-2 lg:px-0 w-full">
-			<div className="relative hidden h-full flex-col  p-10 text-primary dark:border-r lg:flex">
-				<div className="absolute inset-0 bg-muted" />
+			<div className="relative hidden h-full flex-col p-10 lg:flex overflow-hidden">
+				<div className="absolute inset-0 bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 dark:from-blue-800 dark:via-indigo-900 dark:to-purple-950 animate-gradient-shift" />
+				{/* Subtle decorative circles */}
+				<div className="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-white/10 blur-3xl" />
+				<div className="absolute -bottom-32 -left-32 w-[30rem] h-[30rem] rounded-full bg-white/5 blur-3xl" />
 				<Link
 					href="/"
-					className="relative z-20 flex items-center text-lg font-medium gap-4  text-primary"
+					className="relative z-20 flex items-center text-lg font-medium gap-4 text-white"
 				>
 					<Logo className="size-10" logoUrl={logoUrl} />
 					{appName}
 				</Link>
 				<div className="relative z-20 mt-auto">
 					<blockquote className="space-y-2">
-						<p className="text-lg text-primary">{appDescription}</p>
+						<p className="text-lg text-white/90">{appDescription}</p>
 					</blockquote>
 				</div>
 			</div>
 			<div className="w-full">
-				<div className="flex w-full flex-col justify-center space-y-6 max-w-lg mx-auto">
+				<div className="flex w-full flex-col justify-center space-y-6 max-w-lg mx-auto animate-fade-in">
 					{children}
 				</div>
 				<div className="flex items-center gap-4 justify-center absolute bottom-4 right-4 text-muted-foreground">
