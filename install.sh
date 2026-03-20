@@ -341,8 +341,28 @@ install_dokploy() {
     printf "${GREEN}Congratulations, Dokploy is installed!${NC}\n"
     printf "${BLUE}Wait 15 seconds for the server to start${NC}\n"
     printf "${YELLOW}Please go to http://${formatted_addr}:3000${NC}\n"
-    printf "${YELLOW}If you are upgrading from 0.27.1, run this command to migrate your database:${NC}\n"
     printf "${BLUE}docker exec -it \$(docker ps -q -f name=dokploy) pnpm run migration:run${NC}\n\n"
+}
+
+uninstall_dokploy() {
+    echo "Uninstalling Dokploy..."
+    
+    # Remove services
+    docker service rm dokploy dokploy-postgres dokploy-redis 2>/dev/null
+    
+    # Remove network
+    docker network rm dokploy-network 2>/dev/null
+    
+    # Remove secrets
+    docker secret rm dokploy_postgres_password 2>/dev/null
+    
+    # Remove traefik container
+    docker rm -f dokploy-traefik 2>/dev/null
+    
+    # Optional: leave swarm if this was the only thing using it
+    # docker swarm leave --force 2>/dev/null
+    
+    echo "Dokploy has been uninstalled."
 }
 
 update_dokploy() {
@@ -362,8 +382,21 @@ update_dokploy() {
 }
 
 # Main script execution
-if [ "$1" = "update" ]; then
-    update_dokploy
-else
-    install_dokploy
-fi
+case "$1" in
+    update)
+        update_dokploy
+        ;;
+    uninstall|reset|remove)
+        uninstall_dokploy
+        ;;
+    help|--help|-h)
+        echo "Usage: $0 [update|uninstall|reset]"
+        echo "  (no args) : Install Dokploy"
+        echo "  update    : Update Dokploy"
+        echo "  uninstall : Remove Dokploy services and containers"
+        ;;
+    *)
+        install_dokploy
+        ;;
+esac
+```
