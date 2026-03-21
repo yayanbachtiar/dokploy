@@ -146,10 +146,13 @@ wait_for_service() {
             continue
         fi
         
-        # Check if service is running (at least one replica)
-        # Using docker service ps --filter to see if any replica is in 'Running' state
-        if [ "$(docker service ps "$service_name" --filter "desired-state=running" --format "{{.CurrentState}}" | grep -c "Running")" -ge 1 ]; then
-            echo "✅ Service $service_name is running and stable."
+        # Check if service is running and healthy (at least one replica)
+        # We look for "Running" and "(healthy)" if healthcheck is present
+        local state=$(docker service ps "$service_name" --filter "desired-state=running" --format "{{.CurrentState}}")
+        if echo "$state" | grep -q "Running"; then
+            # If the image has a healthcheck, it might show up as "Running (healthy)"
+            # For now, we accept "Running" as a success indicator
+            echo "✅ Service $service_name is running."
             return 0
         fi
         
@@ -260,7 +263,7 @@ deploy_redis() {
 deploy_dokploy() {
     echo "Deploying Dokploy App..."
     local VERSION_TAG=$(detect_version)
-    local DOCKER_IMAGE="dokploy/dokploy:${VERSION_TAG}"
+    local DOCKER_IMAGE="yayanbachtiar/dokploy:${VERSION_TAG}"
     local endpoint_mode=""
     if is_proxmox_lxc; then endpoint_mode="--endpoint-mode dnsrr"; fi
     
@@ -421,7 +424,7 @@ uninstall_dokploy() {
 update_dokploy() {
     # Detect version tag
     VERSION_TAG=$(detect_version)
-    DOCKER_IMAGE="dokploy/dokploy:${VERSION_TAG}"
+    DOCKER_IMAGE="yayanbachtiar/dokploy:${VERSION_TAG}"
 
     echo "Updating Dokploy to version: ${VERSION_TAG}"
 
